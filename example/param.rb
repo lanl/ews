@@ -33,3 +33,19 @@ file_vp = vp.bin
 file_vs = vs.bin
 file_rho = rho.bin
 file_mask = mask.bin
+
+# the following three parameters are optional
+# select which parameter to compute sensivity
+# by default, the program will only compute vp, vs
+sensi_vp = y
+sensi_vs = y
+sensi_rho = n
+
+# the following parameter is optional
+# select which type of modeling to execute
+# select one of 
+# wavefield -- output only regular wavefields
+# sensitivity -- output only sensitivity wavefields
+# both -- output both
+# by default, it is sensitivity
+modeling_type = both
