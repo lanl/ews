@@ -763,7 +763,7 @@ module vars
     real, allocatable, dimension(:, :) :: snapvx, snapvz, ep, es
     real, allocatable, dimension(:) :: sx, sz, sf, rx, rz
     integer :: ns, nr
-    real, allocatable, dimension(:, :) :: datap, datas
+    real, allocatable, dimension(:, :) :: datap, datas, datax, dataz
     integer :: nx, nz
     real :: dx, dz
     integer :: nt
@@ -1293,8 +1293,10 @@ program sensitivity
     real :: minv, maxv, dtstable, f0clean, temp
     integer :: i, j, t
     real :: vs_avg, rho_avg
-    character(len=12) :: name(1:3)
+    character(len=12) :: modeling_type
+    character(len=12), allocatable, dimension(:) :: name
     real :: a1, a2, w
+    logical :: sensi(1:3)
 
     call get_command_argument(1, file_parameter)
     call readpar_int(file_parameter, 'nx', nx, 1, required=.true.)
@@ -1306,7 +1308,10 @@ program sensitivity
 
     idx = 1.0d0/dx
     idz = 1.0d0/dz
-    name = ['vp', 'vs', 'rho']
+    call readpar_logical(file_parameter, 'sensi_vp', sensi(1), .true.)
+    call readpar_logical(file_parameter, 'sensi_vs', sensi(2), .true.)
+    call readpar_logical(file_parameter, 'sensi_rho', sensi(3), .false.)
+    name = pack(['vp', 'vs', 'rho'], mask=sensi)
 
     call readpar_string(file_parameter, 'file_vp', file_vp, '', required=.true.)
     call readpar_string(file_parameter, 'file_vs', file_vs, '', required=.true.)
@@ -1319,6 +1324,8 @@ program sensitivity
     call readpar_int(file_parameter, 'nr', nr, 1, required=.true.)
     call readpar_string(file_parameter, 'file_src', file_src, '', required=.true.)
     call readpar_string(file_parameter, 'file_rec', file_rec, '', required=.true.)
+
+    call readpar_string(file_parameter, 'modeling_type', modeling_type, 'sensitivity', required=.true.)
 
     allocate (sx(1:ns))
     allocate (sz(1:ns))
@@ -1378,7 +1385,7 @@ program sensitivity
         call compute_cpml_damping_coef
 
         ! Iterate over m
-        do l = 1, 2 !3
+        do l = 1, size(name)
 
             ! allocate memory
             call alloc_array(vx, [1, nx, 1, nz], pad=pml + fdhalf)
@@ -1415,6 +1422,8 @@ program sensitivity
             call alloc_array(es, [1, nx, 1, nz])
             call alloc_array(datap, [1, 1, 1, nr])
             call alloc_array(datas, [1, 1, 1, nr])
+            call alloc_array(datax, [1, nt, 1, nr])
+            call alloc_array(dataz, [1, nt, 1, nr])
 
             ! start modeling
             do t = 1, nt
@@ -1433,66 +1442,87 @@ program sensitivity
                 vz(isx, isz) = vz(isx, isz) + dt*w*1.0e6
 
                 ! ==============================================================
-                call update_wavefield(dt, &
-                    stressxxd, stresszzd, stressxzd, vxd, vzd, &
-                    memory_pdxvxd, memory_pdzvxd, memory_pdxvzd, memory_pdzvzd, &
-                    memory_pdxxxd, memory_pdzxzd, memory_pdxxzd, memory_pdzzzd)
+                if (modeling_type == 'sensitivity' .or. modeling_type == 'both') then
 
-                ! Source term
-                !$omp parallel do private(i, j, a1, a2, vs_avg, rho_avg)
-                do j = 1, nz
-                    do i = 1, nx
-                        if (mask(i, j) == 1) then
-                            select case (name(l))
-                                case ('vp')
-                                    a1 = (vx(i + 1, j) - vx(i, j))/dx
-                                    a2 = (vz(i, j + 1) - vz(i, j))/dz
-                                    stressxxd(i, j) = stressxxd(i, j) + dt*(a1 + a2)*2*vp(i, j)*rho(i, j)
-                                    stresszzd(i, j) = stresszzd(i, j) + dt*(a1 + a2)*2*vp(i, j)*rho(i, j)
-                                case ('vs')
-                                    a1 = (vx(i + 1, j) - vx(i, j))/dx
-                                    a2 = (vz(i, j + 1) - vz(i, j))/dz
-                                    stressxxd(i, j) = stressxxd(i, j) - dt*a2*4*vs(i, j)*rho(i, j)
-                                    stresszzd(i, j) = stresszzd(i, j) - dt*a1*4*vs(i, j)*rho(i, j)
-                                    a1 = (vx(i, j + 1) - vx(i, j))/dz
-                                    a2 = (vz(i + 1, j) - vz(i, j))/dx
-                                    vs_avg = 4.0/sum(1.0/vs(i:i + 1, j:j + 1))
-                                    rho_avg = 0.25*sum(rho(i:i + 1, j:j + 1))
-                                    stressxzd(i + 1, j + 1) = stressxzd(i + 1, j + 1) + dt*(a1 + a2)*2*vs_avg*rho_avg
-                                case ('rho')
-                                    a1 = (vx(i + 1, j) - vx(i, j))/dx
-                                    a2 = (vz(i, j + 1) - vz(i, j))/dz
-                                    stressxxd(i, j) = stressxxd(i, j) - dt*(a1*vp(i, j)**2 + a2*(vp(i, j)**2 - 2*vs(i, j)**2))
-                                    stresszzd(i, j) = stresszzd(i, j) - dt*(a2*vp(i, j)**2 + a1*(vp(i, j)**2 - 2*vs(i, j)**2))
-                                    a1 = (vx(i, j + 1) - vx(i, j))/dz
-                                    a2 = (vz(i + 1, j) - vz(i, j))/dx
-                                    vs_avg = 4.0/sum(1.0/vs(i:i + 1, j:j + 1))
-                                    stressxzd(i + 1, j + 1) = stressxzd(i + 1, j + 1) + dt*(a1 + a2)*vs_avg**2
-                            end select
-                        end if
+                    call update_wavefield(dt, &
+                        stressxxd, stresszzd, stressxzd, vxd, vzd, &
+                        memory_pdxvxd, memory_pdzvxd, memory_pdxvzd, memory_pdzvzd, &
+                        memory_pdxxxd, memory_pdzxzd, memory_pdxxzd, memory_pdzzzd)
+
+                    ! Source term
+                    !$omp parallel do private(i, j, a1, a2, vs_avg, rho_avg)
+                    do j = 1, nz
+                        do i = 1, nx
+                            if (mask(i, j) == 1) then
+                                select case (name(l))
+                                    case ('vp')
+                                        a1 = (vx(i + 1, j) - vx(i, j))/dx
+                                        a2 = (vz(i, j + 1) - vz(i, j))/dz
+                                        stressxxd(i, j) = stressxxd(i, j) + dt*(a1 + a2)*2*vp(i, j)*rho(i, j)
+                                        stresszzd(i, j) = stresszzd(i, j) + dt*(a1 + a2)*2*vp(i, j)*rho(i, j)
+                                    case ('vs')
+                                        a1 = (vx(i + 1, j) - vx(i, j))/dx
+                                        a2 = (vz(i, j + 1) - vz(i, j))/dz
+                                        stressxxd(i, j) = stressxxd(i, j) - dt*a2*4*vs(i, j)*rho(i, j)
+                                        stresszzd(i, j) = stresszzd(i, j) - dt*a1*4*vs(i, j)*rho(i, j)
+                                        a1 = (vx(i, j + 1) - vx(i, j))/dz
+                                        a2 = (vz(i + 1, j) - vz(i, j))/dx
+                                        vs_avg = 4.0/sum(1.0/vs(i:i + 1, j:j + 1))
+                                        rho_avg = 0.25*sum(rho(i:i + 1, j:j + 1))
+                                        stressxzd(i + 1, j + 1) = stressxzd(i + 1, j + 1) + dt*(a1 + a2)*2*vs_avg*rho_avg
+                                    case ('rho')
+                                        a1 = (vx(i + 1, j) - vx(i, j))/dx
+                                        a2 = (vz(i, j + 1) - vz(i, j))/dz
+                                        stressxxd(i, j) = stressxxd(i, j) - dt*(a1*vp(i, j)**2 + a2*(vp(i, j)**2 - 2*vs(i, j)**2))
+                                        stresszzd(i, j) = stresszzd(i, j) - dt*(a2*vp(i, j)**2 + a1*(vp(i, j)**2 - 2*vs(i, j)**2))
+                                        a1 = (vx(i, j + 1) - vx(i, j))/dz
+                                        a2 = (vz(i + 1, j) - vz(i, j))/dx
+                                        vs_avg = 4.0/sum(1.0/vs(i:i + 1, j:j + 1))
+                                        stressxzd(i + 1, j + 1) = stressxzd(i + 1, j + 1) + dt*(a1 + a2)*vs_avg**2
+                                end select
+                            end if
+                        end do
                     end do
-                end do
-                !$omp end parallel do
+                    !$omp end parallel do
+
+                    ! ==============================================================
+                    ! Compute sensitivity energy
+
+                    !$omp parallel do private(i, j)
+                    do j = -pml + 1, nz + pml
+                        do i = -pml + 1, nx + pml
+                            snapvx(i, j) = 0.5*(vxd(i + 1, j) + vxd(i, j))
+                            snapvz(i, j) = 0.5*(vzd(i, j + 1) + vzd(i, j))
+                        end do
+                    end do
+                    !$omp end parallel do
+
+                    !$omp parallel do private(i, j)
+                    do j = 1, nz
+                        do i = 1, nx
+                            ep(i, j) = ep(i, j) + ((snapvx(i + 1, j) - snapvx(i - 1, j))/dx + (snapvz(i, j + 1) - snapvz(i, j - 1))/dz)**2
+                            es(i, j) = es(i, j) + ((snapvx(i, j + 1) - snapvx(i, j - 1))/dz - (snapvz(i + 1, j) - snapvz(i - 1, j))/dx)**2
+                        end do
+                    end do
+                    !$omp end parallel do
+
+                end if
 
                 ! ==============================================================
-                ! Compute sensitivity energy
-                !$omp parallel do private(i, j)
-                do j = -pml + 1, nz + pml
-                    do i = -pml + 1, nx + pml
-                        snapvx(i, j) = 0.5*(vxd(i + 1, j) + vxd(i, j))
-                        snapvz(i, j) = 0.5*(vzd(i, j + 1) + vzd(i, j))
-                    end do
-                end do
-                !$omp end parallel do
+                ! If requires output of regular wavefield, then save to datax and z
 
-                !$omp parallel do private(i, j)
-                do j = 1, nz
-                    do i = 1, nx
-                        ep(i, j) = ep(i, j) + ((snapvx(i + 1, j) - snapvx(i - 1, j))/dx + (snapvz(i, j + 1) - snapvz(i, j - 1))/dz)**2
-                        es(i, j) = es(i, j) + ((snapvx(i, j + 1) - snapvx(i, j - 1))/dz - (snapvz(i + 1, j) - snapvz(i - 1, j))/dx)**2
+                if (modeling_type == 'wavefield' .or. modeling_type == 'both' .and. l == 1) then
+
+                    !$omp parallel do private(ir, irx, irz)
+                    do ir = 1, nr
+                        irx = nint(rx(ir)/dx) + 1
+                        irz = nint(rz(ir)/dz) + 1
+                        datax(t, ir) = 0.5*(vx(irx + 1, irz) + vx(irx, irz))
+                        dataz(t, ir) = 0.5*(vz(irx, irz + 1) + vz(irx, irz))
                     end do
-                end do
-                !$omp end parallel do
+                    !$omp end parallel do
+
+                end if
 
                 if (mod(t, nint(nt/10.0)) == 0) then
                     print *, date_time_compact(), ' Time step = ', t, 'of', nt, 'for ', tidy(name(l))
@@ -1500,23 +1530,42 @@ program sensitivity
 
             end do
 
-            ep = ep*rho(1:nx, 1:nz)*vp(1:nx, 1:nz)**2
-            es = es*rho(1:nx, 1:nz)*vs(1:nx, 1:nz)**2
-            call output_array(ep, tidy(dir_working)//'/all_sensitivity_p_wrt_' &
-                //tidy(name(l))//'_src_'//num2str(ishot)//'.bin', transp=.true.)
-            call output_array(es, tidy(dir_working)//'/all_sensitivity_s_wrt_' &
-                //tidy(name(l))//'_src_'//num2str(ishot)//'.bin', transp=.true.)
+            if (modeling_type == 'sensitivity' .or. modeling_type == 'both') then
 
-            do ir = 1, nr
-                irx = nint(rx(ir)/dx) + 1
-                irz = nint(rz(ir)/dz) + 1
-                datap(1, ir) = ep(irx, irz)
-                datas(1, ir) = es(irx, irz)
-            end do
-            call output_array(datap, tidy(dir_working)//'/receiver_sensitivity_p_wrt_' &
-                //tidy(name(l))//'_src_'//num2str(ishot)//'.bin')
-            call output_array(datas, tidy(dir_working)//'/receiver_sensitivity_s_wrt_' &
-                //tidy(name(l))//'_src_'//num2str(ishot)//'.bin')
+                ep = ep*rho(1:nx, 1:nz)*vp(1:nx, 1:nz)**2
+                es = es*rho(1:nx, 1:nz)*vs(1:nx, 1:nz)**2
+                call output_array(ep, tidy(dir_working)//'/all_sensitivity_p_wrt_' &
+                    //tidy(name(l))//'_src_'//num2str(ishot)//'.bin', transp=.true.)
+                call output_array(es, tidy(dir_working)//'/all_sensitivity_s_wrt_' &
+                    //tidy(name(l))//'_src_'//num2str(ishot)//'.bin', transp=.true.)
+
+                !$omp parallel do private(ir, irx, irz)
+                do ir = 1, nr
+                    irx = nint(rx(ir)/dx) + 1
+                    irz = nint(rz(ir)/dz) + 1
+                    datap(1, ir) = ep(irx, irz)
+                    datas(1, ir) = es(irx, irz)
+                end do
+                !$omp end parallel do
+
+                call output_array(datap, tidy(dir_working)//'/receiver_sensitivity_p_wrt_' &
+                    //tidy(name(l))//'_src_'//num2str(ishot)//'.bin')
+                call output_array(datas, tidy(dir_working)//'/receiver_sensitivity_s_wrt_' &
+                    //tidy(name(l))//'_src_'//num2str(ishot)//'.bin')
+
+            end if
+
+            if (modeling_type == 'wavefield' .or. modeling_type == 'both' .and. l == 1) then
+
+                call output_array(datax, tidy(dir_working)//'/wavefield_vx_src_'//num2str(ishot)//'.bin')
+                call output_array(dataz, tidy(dir_working)//'/wavefield_vz_src_'//num2str(ishot)//'.bin')
+
+            end if
+
+            ! If modeling_type is wavefield only, then stop
+            if (modeling_type == 'wavefield') then
+                exit
+            end if
 
         end do
 
