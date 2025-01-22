@@ -59,7 +59,7 @@ contains
         if (present(format)) then
             numformat = format
         else
-            numformat = '(i)'
+            numformat = '(i6)'
         end if
 
         write (numstr, numformat) num
@@ -169,20 +169,20 @@ contains
 
         if (pos_dot == 0 .and. pos_les == 0 .and. pos_ues == 0) then
             ! If the input stream is an integer
-            read (str, '(i)') var_int
+            read (str, *) var_int
             var = real(var_int)
         else if (pos_dot == 0 .and. pos_les /= 0 .and. pos_ues == 0) then
             ! If the input stream is in the form of xxxxexxxx,
             ! then add a .0 to the string to convert it to xxxx.0exxxx
             var_char = str(1:pos_les - 1)//'.0'//str(pos_les:len_trim(str))
-            read (var_char, '(g)') var
+            read (var_char, *) var
         else if (pos_dot == 0 .and. pos_les == 0 .and. pos_ues /= 0) then
             ! If the input stream is in the form of xxxxExxxx,
             ! then add a .0 to the string to convert it to xxxx.0Exxxx
             var_char = str(1:pos_ues - 1)//'.0'//str(pos_ues:len_trim(str))
-            read (var_char, '(g)') var
+            read (var_char, *) var
         else
-            read (str, '(g)') var
+            read (str, *) var
         end if
 
         f = real(var)
@@ -1311,7 +1311,7 @@ program sensitivity
     call readpar_logical(file_parameter, 'sensi_vp', sensi(1), .true.)
     call readpar_logical(file_parameter, 'sensi_vs', sensi(2), .true.)
     call readpar_logical(file_parameter, 'sensi_rho', sensi(3), .false.)
-    name = pack(['vp', 'vs', 'rho'], mask=sensi)
+    name = pack(['vp ', 'vs ', 'rho'], mask=sensi)
 
     call readpar_string(file_parameter, 'file_vp', file_vp, '', required=.true.)
     call readpar_string(file_parameter, 'file_vs', file_vs, '', required=.true.)

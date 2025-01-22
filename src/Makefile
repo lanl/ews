@@ -22,11 +22,6 @@ bindir = $(PWD)/../bin
 objdir = $(PWD)/../obj
 moddir = $(PWD)/../obj
 
-# intel paths, must be set correctly
-intelroot = $(HOME)/intel
-mklroot = $(intelroot)/mkl
-mpiroot = $(intelroot)/mpi
-
 # dependencies
 object = main.o
 obj = $(addprefix $(objdir)/, $(object))
@@ -35,23 +30,21 @@ obj = $(addprefix $(objdir)/, $(object))
 exec = $(bindir)/x_ewsmod2d
 all: makedir $(exec)
 
-# options
-fc = ifx
+# options -- using gfortran
+fc = gfortran
 inc =
-lflags = -qmkl -qopenmp \
-        -L$(intelroot)/lib \
-        -L$(mklroot)/lib \
-        -L$(mpiroot)/lib \
-        -L$(mpiroot)/lib/release \
-        $(mklroot)/lib/libmkl_core.a \
-        $(mklroot)/lib/libmkl_intel_thread.a \
-        $(mklroot)/lib/libmkl_intel_lp64.a \
-        $(mklroot)/lib/libmkl_blas95_lp64.a \
-        $(mklroot)/lib/libmkl_lapack95_lp64.a
-fflags = -O3 -fpp -traceback -warn unused -module $(moddir) -qmkl \
-        -assume byterecl -assume buffered_io -qopenmp -heap-arrays \
-        -gen-interfaces -xHost -Dfd8 \
-	#	-O0 -g -check bounds
+lflags = -fopenmp
+fflags = -O3 -cpp -fbacktrace -Wall -Wextra -Wunused -J$(moddir) \
+		 -fopenmp -Wno-conversion -Wno-compare-reals \
+		 -march=native -mtune=native -Dfd8
+
+# options -- using intel's fortran ifx
+#fc = ifx
+#inc =
+#lflags = -qopenmp
+#fflags = -O3 -fpp -traceback -warn unused -module $(moddir) \
+#        -assume byterecl -assume buffered_io -qopenmp -heap-arrays \
+#        -gen-interfaces -xHost -Dfd8
 
 # compile
 $(objdir)/%.o : $(PWD)/%.f90
