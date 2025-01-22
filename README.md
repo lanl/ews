@@ -22,7 +22,7 @@ The work implements part of the methodology developed in:
 Please cite the works if you use the code in your work.
 
 # Requirement
-The code is written in Fortran. Currently, it only support Intel's Fortran compiler, which is freely available through [Intel oneAPI Base Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit.html#gs.bed72v) and [Intel HPC Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/hpc-toolkit.html#gs.bed5op). We have compiled and tested the code with ifx 2024.2.
+The code is written in Fortran. Currently, you can use (1) Intel's Fortran compiler, which is freely available through [Intel oneAPI Base Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit.html#gs.bed72v) and [Intel HPC Toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/hpc-toolkit.html#gs.bed5op). We have compiled and tested the code with ifx 2024.2; or (2) GNU gfortran, to compile. We have compiled and tested the code with gfortran 14.2.0. 
 
 # Use
 To install,
@@ -41,6 +41,8 @@ cd src
 make clean
 make
 ```
+
+The default compiler and options are gfortran, but the Makefile also contains options for ifx. 
 
 We include one example in [example](example). To run the test,
 
